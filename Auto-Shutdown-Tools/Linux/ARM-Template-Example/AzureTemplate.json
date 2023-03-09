@@ -1,0 +1,226 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "type": "string"
+        },
+        "networkInterfaceName": {
+            "type": "string"
+        },
+        "enableAcceleratedNetworking": {
+            "type": "bool"
+        },
+        "networkSecurityGroupName": {
+            "type": "string"
+        },
+        "networkSecurityGroupRules": {
+            "type": "array"
+        },
+        "subnetName": {
+            "type": "string"
+        },
+        "virtualNetworkName": {
+            "type": "string"
+        },
+        "addressPrefixes": {
+            "type": "array"
+        },
+        "subnets": {
+            "type": "array"
+        },
+        "publicIpAddressName": {
+            "type": "string"
+        },
+        "publicIpAddressType": {
+            "type": "string"
+        },
+        "publicIpAddressSku": {
+            "type": "string"
+        },
+        "pipDeleteOption": {
+            "type": "string"
+        },
+        "virtualMachineName": {
+            "type": "string"
+        },
+        "virtualMachineComputerName": {
+            "type": "string"
+        },
+        "virtualMachineRG": {
+            "type": "string"
+        },
+        "osDiskType": {
+            "type": "string"
+        },
+        "osDiskDeleteOption": {
+            "type": "string"
+        },
+        "virtualMachineSize": {
+            "type": "string"
+        },
+        "nicDeleteOption": {
+            "type": "string"
+        },
+        "adminUsername": {
+            "type": "string"
+        },
+        "adminPassword": {
+            "type": "secureString"
+        }
+    },
+    "variables": {
+        "nsgId": "[resourceId(resourceGroup().name, 'Microsoft.Network/networkSecurityGroups', parameters('networkSecurityGroupName'))]",
+        "vnetName": "[parameters('virtualNetworkName')]",
+        "vnetId": "[resourceId(resourceGroup().name,'Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]",
+        "subnetRef": "[concat(variables('vnetId'), '/subnets/', parameters('subnetName'))]"
+    },
+    "resources": [
+        {
+            "name": "[parameters('networkInterfaceName')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2021-03-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkSecurityGroups/', parameters('networkSecurityGroupName'))]",
+                "[concat('Microsoft.Network/virtualNetworks/', parameters('virtualNetworkName'))]",
+                "[concat('Microsoft.Network/publicIpAddresses/', parameters('publicIpAddressName'))]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "subnet": {
+                                "id": "[variables('subnetRef')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIpAddress": {
+                                "id": "[resourceId(resourceGroup().name, 'Microsoft.Network/publicIpAddresses', parameters('publicIpAddressName'))]",
+                                "properties": {
+                                    "deleteOption": "[parameters('pipDeleteOption')]"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "enableAcceleratedNetworking": "[parameters('enableAcceleratedNetworking')]",
+                "networkSecurityGroup": {
+                    "id": "[variables('nsgId')]"
+                }
+            }
+        },
+        {
+            "name": "[parameters('networkSecurityGroupName')]",
+            "type": "Microsoft.Network/networkSecurityGroups",
+            "apiVersion": "2019-02-01",
+            "location": "[parameters('location')]",
+            "properties": {
+                "securityRules": "[parameters('networkSecurityGroupRules')]"
+            }
+        },
+        {
+            "name": "[parameters('virtualNetworkName')]",
+            "type": "Microsoft.Network/virtualNetworks",
+            "apiVersion": "2020-11-01",
+            "location": "[parameters('location')]",
+            "properties": {
+                "addressSpace": {
+                    "addressPrefixes": "[parameters('addressPrefixes')]"
+                },
+                "subnets": "[parameters('subnets')]"
+            }
+        },
+        {
+            "name": "[parameters('publicIpAddressName')]",
+            "type": "Microsoft.Network/publicIpAddresses",
+            "apiVersion": "2020-08-01",
+            "location": "[parameters('location')]",
+            "properties": {
+                "publicIpAllocationMethod": "[parameters('publicIpAddressType')]"
+            },
+            "sku": {
+                "name": "[parameters('publicIpAddressSku')]"
+            }
+        },
+        {
+            "name": "[parameters('virtualMachineName')]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2021-07-01",
+            "location": "[parameters('location')]",
+            "dependsOn": [
+                "[concat('Microsoft.Network/networkInterfaces/', parameters('networkInterfaceName'))]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('virtualMachineSize')]"
+                },
+                "storageProfile": {
+                    "osDisk": {
+                        "createOption": "fromImage",
+                        "managedDisk": {
+                            "storageAccountType": "[parameters('osDiskType')]"
+                        },
+                        "deleteOption": "[parameters('osDiskDeleteOption')]"
+                    },
+                    "imageReference": {
+                        "publisher": "canonical",
+                        "offer": "0001-com-ubuntu-server-focal",
+                        "sku": "20_04-lts-gen2",
+                        "version": "latest"
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', parameters('networkInterfaceName'))]",
+                            "properties": {
+                                "deleteOption": "[parameters('nicDeleteOption')]"
+                            }
+                        }
+                    ]
+                },
+                "osProfile": {
+                    "computerName": "[parameters('virtualMachineComputerName')]",
+                    "adminUsername": "[parameters('adminUsername')]",
+                    "adminPassword": "[parameters('adminPassword')]",
+                    "linuxConfiguration": {
+                        "patchSettings": {
+                            "patchMode": "ImageDefault"
+                        }
+                    }
+                }
+            }
+        },
+		{
+			"name": "[concat(variables('virtualMachineName'), '/', 'config-app')]",
+			"type": "Microsoft.Compute/virtualMachines/extensions",
+			"location": "[parameters('location')]",
+			"apiVersion": "2019-03-01",
+			"dependsOn": [
+				"[concat('Microsoft.Compute/virtualMachines/', variables('virtualMachineName'))]"
+			],
+			"tags": {
+				"displayName": "config-app"
+			},
+			"properties": {
+				"publisher": "Microsoft.Azure.Extensions",
+				"type": "CustomScript",
+				"typeHandlerVersion": "2.1",
+				"autoUpgradeMinorVersion": true,
+				"settings": {
+				  "skipDos2Unix":false,
+				},
+				"protectedSettings": {
+				   "script": "IyEvYmluL2Jhc2gKCiMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIwojIENvcHlyaWdodCAyMDIyIFNvcGhvcyBMdGQuICBBbGwgcmlnaHRzIHJlc2VydmVkLgojIExpY2Vuc2VkIHVuZGVyIHRoZSBBcGFjaGUgTGljZW5zZSwgVmVyc2lvbiAyLjAgKHRoZSAiTGljZW5zZSIpOyB5b3UgbWF5IG5vdCB1c2UgdGhpcyBmaWxlIGV4Y2VwdCBpbiBjb21wbGlhbmNlIHdpdGggdGhlIExpY2Vuc2UuCiMgWW91IG1heSBvYnRhaW4gYSBjb3B5IG9mIHRoZSBMaWNlbnNlIGF0IGh0dHA6Ly93d3cuYXBhY2hlLm9yZy9saWNlbnNlcy9MSUNFTlNFLTIuMAojIFVubGVzcyByZXF1aXJlZCBieSBhcHBsaWNhYmxlIGxhdyBvciBhZ3JlZWQgdG8gaW4gd3JpdGluZywgc29mdHdhcmUgZGlzdHJpYnV0ZWQgdW5kZXIgdGhlIExpY2Vuc2UgaXMgZGlzdHJpYnV0ZWQgb24gYW4gIkFTIElTIiBCQVNJUywgCiMgV0lUSE9VVCBXQVJSQU5USUVTIE9SIENPTkRJVElPTlMgT0YgQU5ZIEtJTkQsIGVpdGhlciBleHByZXNzIG9yIGltcGxpZWQuIFNlZSB0aGUgTGljZW5zZSBmb3IgdGhlIHNwZWNpZmljIGxhbmd1YWdlIGdvdmVybmluZyAKIyBwZXJtaXNzaW9ucyBhbmQgbGltaXRhdGlvbnMgdW5kZXIgdGhlIExpY2Vuc2UuCiMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIwoKc2NyaXB0Q29kZT0iSXlFdlltbHVMMkpoYzJnS0NpTWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJd29qSUVOdmNIbHlhV2RvZENBeU1ESXlJRk52Y0dodmN5Qk1kR1F1SUNCQmJHd2djbWxuYUhSeklISmxjMlZ5ZG1Wa0xnb2pJRXhwWTJWdWMyVmtJSFZ1WkdWeUlIUm9aU0JCY0dGamFHVWdUR2xqWlc1elpTd2dWbVZ5YzJsdmJpQXlMakFnS0hSb1pTQWlUR2xqWlc1elpTSXBPeUI1YjNVZ2JXRjVJRzV2ZENCMWMyVWdkR2hwY3lCbWFXeGxJR1Y0WTJWd2RDQnBiaUJqYjIxd2JHbGhibU5sSUhkcGRHZ2dkR2hsSUV4cFkyVnVjMlV1Q2lNZ1dXOTFJRzFoZVNCdlluUmhhVzRnWVNCamIzQjVJRzltSUhSb1pTQk1hV05sYm5ObElHRjBJR2gwZEhBNkx5OTNkM2N1WVhCaFkyaGxMbTl5Wnk5c2FXTmxibk5sY3k5TVNVTkZUbE5GTFRJdU1Bb2pJRlZ1YkdWemN5QnlaWEYxYVhKbFpDQmllU0JoY0hCc2FXTmhZbXhsSUd4aGR5QnZjaUJoWjNKbFpXUWdkRzhnYVc0Z2QzSnBkR2x1Wnl3Z2MyOW1kSGRoY21VZ1pHbHpkSEpwWW5WMFpXUWdkVzVrWlhJZ2RHaGxJRXhwWTJWdWMyVWdhWE1nWkdsemRISnBZblYwWldRZ2IyNGdZVzRnSWtGVElFbFRJaUJDUVZOSlV5d2dDaU1nVjBsVVNFOVZWQ0JYUVZKU1FVNVVTVVZUSUU5U0lFTlBUa1JKVkVsUFRsTWdUMFlnUVU1WklFdEpUa1FzSUdWcGRHaGxjaUJsZUhCeVpYTnpJRzl5SUdsdGNHeHBaV1F1SUZObFpTQjBhR1VnVEdsalpXNXpaU0JtYjNJZ2RHaGxJSE53WldOcFptbGpJR3hoYm1kMVlXZGxJR2R2ZG1WeWJtbHVaeUFLSXlCd1pYSnRhWE56YVc5dWN5QmhibVFnYkdsdGFYUmhkR2x2Ym5NZ2RXNWtaWElnZEdobElFeHBZMlZ1YzJVdUNpTWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJd29LYVdSc1pVTnZkVzUwWlhJOU1BcHNiMmRHYVd4bFBTSXZkbUZ5TDJ4dlp5OUJkWFJ2VTJoMWRHUnZkMjVVYjI5c2N5NXNiMmNpQ2dwM2FHbHNaU0IwY25WbENtUnZDaUFnSUNBZ0lDQWdjM05vVTJWemMybHZibk05WUhkb2J5QjhJSGRqSUMxc1lBb2dJQ0FnSUNBZ0lHbG1JRnNnSkhOemFGTmxjM05wYjI1eklDMWxjU0F3SUYwS0lDQWdJQ0FnSUNCMGFHVnVDaUFnSUNBZ0lDQWdJQ0FnSUNBZ0lDQnBaR3hsUTI5MWJuUmxjajBrS0NocFpHeGxRMjkxYm5SbGNpc3hLU2tLSUNBZ0lDQWdJQ0FnSUNBZ0lDQWdJR1ZqYUc4Z1lHUmhkR1ZnSUNJZ1RrOGdVMU5JSUhObGMzTnBiMjV6SUVSbGRHVmpkR1ZrTENCcGJtTnlaVzFsYm5ScGJtY2dhV1JzWlVOdmRXNTBaWEk2SUNJZ0pHbGtiR1ZEYjNWdWRHVnlJRDQrSUNSc2IyZEdhV3hsQ2lBZ0lDQWdJQ0FnWld4elpRb2dJQ0FnSUNBZ0lDQWdJQ0FnSUNBZ2FXUnNaVU52ZFc1MFpYSTlNQW9nSUNBZ0lDQWdJQ0FnSUNBZ0lDQWdaV05vYnlCZ1pHRjBaV0FnSWlCVFUwZ2djMlZ6YzJsdmJuTWdaR1YwWldOMFpXUXNJSEpsYzJWMGRHbHVaeUJwWkd4bFEyOTFiblJsY2pvZ0lpQWthV1JzWlVOdmRXNTBaWElnUGo0Z0pHeHZaMFpwYkdVS0lDQWdJQ0FnSUNCbWFRb0tJQ0FnSUNBZ0lDQnBaaUJiSUNScFpHeGxRMjkxYm5SbGNpQXRaM1FnTmpBZ1hRb2dJQ0FnSUNBZ0lIUm9aVzRLSUNBZ0lDQWdJQ0FnSUNBZ0lDQWdJR1ZqYUc4Z1lHUmhkR1ZnSUNJZ0tpb3FJRlJwYldWdmRYUWdLQ0lnSkdsa2JHVkRiM1Z1ZEdWeUlDSXBMQ0J6YUhWMGRHbHVaeUJrYjNkdUlDb3FLaUlnUGo0Z0pHeHZaMFpwYkdVS0lDQWdJQ0FnSUNBZ0lDQWdJQ0FnSUhOb2RYUmtiM2R1SUMxb0lHNXZkd29nSUNBZ0lDQWdJR1pwQ2dvZ0lDQWdJQ0FnSUNNZ1YyRnBkQ0JtYjNJZ01TQnRhVzUxZEdVZ1ltVm1iM0psSUc1bGVIUWdZMmhsWTJzS0lDQWdJQ0FnSUNCemJHVmxjQ0EyTUFwa2IyNWxDZ289IgoKc3lzdGVtZEZpbGU9Ikl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpDaU1nUTI5d2VYSnBaMmgwSURJd01qSWdVMjl3YUc5eklFeDBaQzRnSUVGc2JDQnlhV2RvZEhNZ2NtVnpaWEoyWldRdUNpTWdUR2xqWlc1elpXUWdkVzVrWlhJZ2RHaGxJRUZ3WVdOb1pTQk1hV05sYm5ObExDQldaWEp6YVc5dUlESXVNQ0FvZEdobElDSk1hV05sYm5ObElpazdJSGx2ZFNCdFlYa2dibTkwSUhWelpTQjBhR2x6SUdacGJHVWdaWGhqWlhCMElHbHVJR052YlhCc2FXRnVZMlVnZDJsMGFDQjBhR1VnVEdsalpXNXpaUzRLSXlCWmIzVWdiV0Y1SUc5aWRHRnBiaUJoSUdOdmNIa2diMllnZEdobElFeHBZMlZ1YzJVZ1lYUWdhSFIwY0RvdkwzZDNkeTVoY0dGamFHVXViM0puTDJ4cFkyVnVjMlZ6TDB4SlEwVk9VMFV0TWk0d0NpTWdWVzVzWlhOeklISmxjWFZwY21Wa0lHSjVJR0Z3Y0d4cFkyRmliR1VnYkdGM0lHOXlJR0ZuY21WbFpDQjBieUJwYmlCM2NtbDBhVzVuTENCemIyWjBkMkZ5WlNCa2FYTjBjbWxpZFhSbFpDQjFibVJsY2lCMGFHVWdUR2xqWlc1elpTQnBjeUJrYVhOMGNtbGlkWFJsWkNCdmJpQmhiaUFpUVZNZ1NWTWlJRUpCVTBsVExDQUtJeUJYU1ZSSVQxVlVJRmRCVWxKQlRsUkpSVk1nVDFJZ1EwOU9SRWxVU1U5T1V5QlBSaUJCVGxrZ1MwbE9SQ3dnWldsMGFHVnlJR1Y0Y0hKbGMzTWdiM0lnYVcxd2JHbGxaQzRnVTJWbElIUm9aU0JNYVdObGJuTmxJR1p2Y2lCMGFHVWdjM0JsWTJsbWFXTWdiR0Z1WjNWaFoyVWdaMjkyWlhKdWFXNW5JQW9qSUhCbGNtMXBjM05wYjI1eklHRnVaQ0JzYVcxcGRHRjBhVzl1Y3lCMWJtUmxjaUIwYUdVZ1RHbGpaVzV6WlM0S0l5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpJeU1qSXlNakl5TWpDZ3BiVlc1cGRGMEtSR1Z6WTNKcGNIUnBiMjQ5VFc5dWFYUnZjaUJtYjNJZ2JtOTBJR0ZqZEdsMlpTQjFjMlZ5SUdGdVpDQnphSFYwWkc5M2JpQjBhR1VnWTI5dGNIVjBaWElLQ2x0VFpYSjJhV05sWFFwRmVHVmpVM1JoY25ROUwzVnpjaTlpYVc0dlFYVjBiMU5vZFhSa2IzZHVWRzl2YkhNdWMyZ0tDbHRKYm5OMFlXeHNYUXBYWVc1MFpXUkNlVDF0ZFd4MGFTMTFjMlZ5TG5SaGNtZGxkQW89IgoKc2NyaXB0UGF0aD0iL3Vzci9iaW4vQXV0b1NodXRkb3duVG9vbHMuc2giCnN5c3RlbWRQYXRoPSIvbGliL3N5c3RlbWQvc3lzdGVtL0F1dG9TaHV0ZG93blRvb2xzLnNlcnZpY2UiCgplY2hvICRzY3JpcHRDb2RlIHwgYmFzZTY0IC1kID4gJHNjcmlwdFBhdGgKZWNobyAkc3lzdGVtZEZpbGUgfCBiYXNlNjQgLWQgPiAkc3lzdGVtZFBhdGgKCmNobW9kICt4ICRzY3JpcHRQYXRoCgpzeXN0ZW1jdGwgZGFlbW9uLXJlbG9hZApzeXN0ZW1jdGwgZW5hYmxlIEF1dG9TaHV0ZG93blRvb2xzLnNlcnZpY2UKc3lzdGVtY3RsIHN0YXJ0IEF1dG9TaHV0ZG93blRvb2xzLnNlcnZpY2UKCg==",
+				}
+			}
+		}
+    ],
+    "outputs": {
+        "adminUsername": {
+            "type": "string",
+            "value": "[parameters('adminUsername')]"
+        }
+    }
+}
